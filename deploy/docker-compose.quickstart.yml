@@ -1,0 +1,163 @@
+# RouteGate quickstart: MySQL + gateway + demo services + a deterministic
+# OpenAI-compatible mock endpoint for the AI Agent tab.
+#
+#   demo-alpha, demo-beta  upstream services (in-mesh only, no host ports)
+#   demo-caller            workload identity calling THROUGH the gateway
+#   mock-llm               local-only OpenAI-compatible endpoint (no secrets)
+#
+# See scripts/demo-up.sh for the full bring-up flow (certs -> compose ->
+# seed). All images except mysql:8.4 are built locally from source; set
+# HTTPS_PROXY for the Docker daemon if registry access needs a proxy.
+name: routegate-quickstart
+
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: routegate-mysql
+    environment:
+      MYSQL_DATABASE: routegate
+      MYSQL_USER: routegate
+      MYSQL_PASSWORD: routegate-demo
+      MYSQL_ROOT_PASSWORD: root-demo
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-proot-demo"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    networks:
+      - gateway-net
+
+  routegate:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      args:
+        TARGETARCH: ${TARGETARCH:-arm64}
+    image: routegate:demo
+    container_name: routegate
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      ROUTEGATE_DB_DSN: "routegate:routegate-demo@tcp(mysql:3306)/routegate?parseTime=true&timeout=5s&readTimeout=10s"
+      ROUTEGATE_CONFIG_SYNC_INTERVAL: 5s   # demo: snappy; production default is 60s
+      ROUTEGATE_LISTEN: :8080
+      ROUTEGATE_HEALTH_LISTEN: :8082
+      ROUTEGATE_SERVER_TLS_CERT: /certs/gateway.crt
+      ROUTEGATE_SERVER_TLS_KEY: /certs/gateway.key
+      ROUTEGATE_ACCESS_LOG_SINK: file
+      ROUTEGATE_ACCESS_LOG_FILE: /var/log/routegate/access.log
+      ROUTEGATE_ACCESS_LOG_MAX_MB: "1"      # demo: small cap so rolling is observable
+      ROUTEGATE_ACCESS_LOG_RETAIN_DAYS: "7"
+      ROUTEGATE_INSTANCE_ID: routegate-demo-1
+      ROUTEGATE_ADMIN_BOOTSTRAP_USERNAME: admin
+      ROUTEGATE_ADMIN_BOOTSTRAP_PASSWORD: admin-demo-change-me
+      # Demo: the caller doubles as a trusted edge-style caller so the
+      # end-user-context forwarding path is observable end to end.
+      ROUTEGATE_TRUSTED_USER_CONTEXT_CALLERS: demo-caller,demo-edge
+    volumes:
+      - ./certs:/certs:ro
+      - ./access-logs:/var/log/routegate   # access logs land on the host, rotated daily / 1 MiB cap / 7-day retention
+    ports:
+      - "127.0.0.1:8080:8080"   # data plane (mTLS) — for curl verification from the host
+      - "127.0.0.1:8081:8081"   # admin listener (plain HTTP, panel at /admin/) — demo only; front with TLS in production
+      - "127.0.0.1:8082:8082"   # health listener — plaintext probes
+    networks:
+      - gateway-net
+
+  demo-alpha:
+    build:
+      context: ..
+      dockerfile: demo/Dockerfile.service
+      args:
+        TARGETARCH: ${TARGETARCH:-arm64}
+        BIN: demo-alpha
+    image: routegate-demo-service:alpha
+    container_name: demo-alpha
+    command: ["-name", "demo-alpha"]
+    depends_on:
+      routegate:
+        condition: service_started
+    networks:
+      - gateway-net
+
+  demo-beta:
+    build:
+      context: ..
+      dockerfile: demo/Dockerfile.service
+      args:
+        TARGETARCH: ${TARGETARCH:-arm64}
+        BIN: demo-beta
+    image: routegate-demo-service:beta
+    container_name: demo-beta
+    command: ["-name", "demo-beta"]
+    depends_on:
+      routegate:
+        condition: service_started
+    networks:
+      - gateway-net
+
+  demo-edge:
+    build:
+      context: ..
+      dockerfile: demo/Dockerfile.edge
+      args:
+        TARGETARCH: ${TARGETARCH:-arm64}
+    image: routegate-demo-edge:latest
+    container_name: demo-edge
+    depends_on:
+      routegate:
+        condition: service_started
+    environment:
+      GATEWAY_URL: https://routegate:8080
+      CLIENT_CERT: /certs/edge.crt
+      CLIENT_KEY: /certs/edge.key
+      GATEWAY_CA: /certs/gateway.crt
+      LISTEN_ADDR: :8080
+    volumes:
+      - ./certs:/certs:ro
+    ports:
+      - "127.0.0.1:8090:8080"   # public-facing demo entrypoint; no client cert required
+    networks:
+      - gateway-net
+
+  demo-caller:
+    build:
+      context: ..
+      dockerfile: demo/Dockerfile.caller
+      args:
+        TARGETARCH: ${TARGETARCH:-arm64}
+    image: routegate-demo-caller:latest
+    container_name: demo-caller
+    depends_on:
+      routegate:
+        condition: service_started
+    environment:
+      GATEWAY_URL: https://routegate:8080
+      CLIENT_CERT: /certs/caller.crt
+      CLIENT_KEY: /certs/caller.key
+      GATEWAY_CA: /certs/gateway.crt
+      INTERVAL: 3s
+    volumes:
+      - ./certs:/certs:ro
+    networks:
+      - gateway-net
+
+  mock-llm:
+    build:
+      context: ..
+      dockerfile: demo/Dockerfile.mock-llm
+      args:
+        TARGETARCH: ${TARGETARCH:-arm64}
+    image: routegate-demo-mock-llm:latest
+    container_name: routegate-demo-mock-llm
+    networks:
+      - gateway-net
+
+volumes:
+  mysql-data:
+
+networks:
+  gateway-net:

@@ -1,0 +1,9 @@
+# Demo upstream service image (static binary into scratch, no base pull).
+FROM scratch
+
+ARG TARGETARCH=arm64
+ARG BIN=demo-alpha
+COPY demo/bin/${BIN}-linux-${TARGETARCH} /service
+
+EXPOSE 8080
+ENTRYPOINT ["/service"]

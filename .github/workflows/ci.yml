@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [master, test]
+  pull_request:
+    branches: [master, test]
+
+jobs:
+  build-test:
+    name: Build & test (Go)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: gofmt check
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "Files not gofmt-formatted:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go build
+        run: go build ./...
+
+      - name: go test
+        run: go test -race ./...
+
+  panel:
+    name: Panel build & embedded binary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Build panel
+        working-directory: web/admin
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+
+      - name: Build gateway with embedded panel
+        run: go build -tags panel ./...
+
+      - name: Restore dist marker removed by emptyOutDir
+        run: printf '*\n!.gitignore\n' > internal/web/dist/.gitignore
+
+      - name: Verify working tree clean (no build artifacts committed)
+        run: git diff --exit-code
+

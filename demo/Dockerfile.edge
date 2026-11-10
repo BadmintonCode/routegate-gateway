@@ -1,0 +1,8 @@
+# Public-facing demo edge: plain HTTP ingress, mTLS outbound to RouteGate.
+FROM scratch
+
+ARG TARGETARCH=arm64
+COPY demo/bin/demo-edge-linux-${TARGETARCH} /edge
+
+EXPOSE 8080
+ENTRYPOINT ["/edge"]

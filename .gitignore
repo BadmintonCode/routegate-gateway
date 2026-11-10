@@ -1,0 +1,48 @@
+# Go
+/routegate
+*.test
+*.out
+coverage.txt
+
+# Node / admin panel build
+node_modules/
+web/admin/dist/
+# Generated at build time from the pinned mermaid npm package (web/admin/scripts/copy-mermaid.mjs)
+web/admin/public/mermaid.min.js
+
+.routegate/
+
+# Environment and secrets — never commit
+.env
+*.env
+deploy/runtime-env/
+
+# Certificates and keys — never commit
+*.pem
+*.key
+*.crt
+*.p12
+!**/testdata/*.pem
+!**/testdata/*.key
+
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Demo/build artifacts
+/deploy/bin/
+/demo/bin/
+/deploy/certs/
+/deploy/demo-seed.sql
+
+# Access log bind mount (demo)
+/deploy/access-logs/
+
+# Embedded panel build output (vite wipes this dir on every build)
+internal/web/dist/assets/
+internal/web/dist/index.html
+internal/web/dist/favicon.svg
+# Copied from public/ by the panel build (scripts/copy-mermaid.mjs)
+internal/web/dist/mermaid.min.js

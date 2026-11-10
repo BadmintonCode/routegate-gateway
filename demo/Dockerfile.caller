@@ -1,0 +1,7 @@
+# Demo caller image (static binary into scratch, no base pull).
+FROM scratch
+
+ARG TARGETARCH=arm64
+COPY demo/bin/demo-caller-linux-${TARGETARCH} /caller
+
+ENTRYPOINT ["/caller"]

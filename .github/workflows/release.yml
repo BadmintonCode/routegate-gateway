@@ -1,0 +1,51 @@
+# Release workflow (ADR-0001 §15.3): tag v* → goreleaser binaries + checksums
+# + SBOMs on the GitHub release. Docker images keep flowing through the
+# Release Console (deploy/routegate-canary), not through this workflow.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build admin panel (go:embed input)
+        working-directory: web/admin
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+
+      - name: Install syft (SBOM generator, built from the module proxy)
+        run: |
+          go install github.com/anchore/syft/cmd/syft@v1.19.0
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      # GitHub release-asset downloads 504'd repeatedly (syft checksums,
+      # then the goreleaser tarball itself) — both tools are installed from
+      # the Go module proxy instead, which is CDN-independent.
+      - name: Install goreleaser (module proxy)
+        run: |
+          go install github.com/goreleaser/goreleaser/v2@v2.7.0
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Release
+        run: goreleaser release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

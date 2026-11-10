@@ -1,0 +1,8 @@
+# Deterministic OpenAI-compatible endpoint for the local quickstart only.
+FROM scratch
+
+ARG TARGETARCH=arm64
+COPY demo/bin/mock-llm-linux-${TARGETARCH} /mock-llm
+
+EXPOSE 8080
+ENTRYPOINT ["/mock-llm"]

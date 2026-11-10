@@ -1,0 +1,38 @@
+# goreleaser release configuration (ADR-0001 §15.3): binaries, checksums and
+# SBOMs per version tag. Docker images are built by the Release Console (the
+# deployment round's owner decision), so there is no docker section here.
+# The embedded admin panel must exist before `goreleaser release` runs —
+# .github/workflows/release.yml builds internal/web/dist first.
+version: 2
+
+project_name: routegate
+
+builds:
+  - id: routegate
+    main: ./cmd/routegate
+    binary: routegate
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    tags:
+      - panel
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+
+archives:
+  - formats: [tar.gz]
+    name_template: "routegate_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: checksums.txt
+
+sboms:
+  - artifacts: archive
+
+changelog:
+  disable: true # CHANGELOG.md is the source of truth (Keep-a-Changelog)
+
+release:
+  footer: |
+    See [CHANGELOG.md](https://github.com/BadmintonCode/routegate-gateway/blob/master/CHANGELOG.md) for the full release notes.

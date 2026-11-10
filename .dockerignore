@@ -1,0 +1,10 @@
+.git
+.env
+deploy/bin
+deploy/certs
+deploy/access-logs
+web/admin/node_modules
+web/admin/dist
+internal/web/dist
+*.md
+docs
